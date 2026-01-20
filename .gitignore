@@ -1,0 +1,18 @@
+# Ignore config file containing secrets
+config.yaml
+
+# Ignore evaluation logs
+model_test/
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE settings
+.trae/
+.vscode/
+.idea/
+
+# Environment variables
+.env
