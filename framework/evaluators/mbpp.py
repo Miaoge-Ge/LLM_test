@@ -43,20 +43,24 @@ class MBPPTask(CodeGenerationTask):
                 "error_msg": error_msg,
                 "duration": format_time(time.time() - start_time),
                 "duration_raw": time.time() - start_time,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
         
         if not completion:
              return {
                 "task_id": task_id,
-                "status": "CRITICAL_API_FAILURE", # Changed from API_FAILED to CRITICAL_API_FAILURE
+                "status": "EMPTY_RESPONSE",
                 "error_msg": "Empty completion (Possible Content Filter or Overload)",
                 "duration": format_time(time.time() - start_time),
                 "duration_raw": time.time() - start_time,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
 
-        code = self._extract_code(completion)
+        code = self._dedent_code(self._extract_code(completion))
         test_code_block = "\n".join(test_list)
         full_code = f"{self.header}\n{code}\n\n{test_code_block}"
         
@@ -66,5 +70,17 @@ class MBPPTask(CodeGenerationTask):
         pattern = r"```python\s*(.*?)\s*```"
         match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
         if match:
-            return match.group(1)
-        return text
+            return match.group(1).strip()
+        return text.strip()
+
+    def _dedent_code(self, code: str) -> str:
+        lines = code.split("\n")
+        min_indent = None
+        for line in lines:
+            if not line.strip():
+                continue
+            indent = len(line) - len(line.lstrip())
+            min_indent = indent if min_indent is None else min(min_indent, indent)
+        if not min_indent:
+            return code
+        return "\n".join((line[min_indent:] if line.strip() else "") for line in lines)

@@ -1,7 +1,7 @@
 # LLM Evaluation Framework (LLM 评测框架)
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 
 轻量级、配置驱动且易于扩展的大语言模型（LLM）评测框架。专为高效和易用性设计，支持多模型并发评测、精确的速率限制以及详尽的性能指标分析。
 
@@ -17,7 +17,7 @@
   - **准确率 (Accuracy/Pass@1)**
   - **吞吐量 (Throughput - Tokens/sec)**
   - **延迟 (Latency - 平均任务耗时)**
-  - **日志分离**：结果数据 (`results.tsv`) 与执行日志 (`execution.log`) 分离，便于分析。
+  - **统一日志**：单个日志文件包含逐条结果与最终汇总。
 - **可扩展架构**：通过继承基类，轻松添加新的评测任务（如代码生成、逻辑推理等）。
 - **分层配置系统**：`registry.yaml`（静态资源）+ `settings.yaml`（运行时覆盖）的双层配置架构。
 
@@ -97,10 +97,7 @@ python run_eval.py
 
 ### 输出结果
 
-评测结果将保存在 `model_test/<model_name>/<task_name>_<timestamp>/` 目录下：
-
-- **`results.tsv`**: 制表符分隔的任务结果文件（包含任务ID、状态、耗时、Token数），易于 Excel/Pandas 处理。
-- **`execution.log`**: 完整的执行日志，包含详细的错误信息、警告和最终摘要。
+评测结果将保存在 `model_test/<model_name>/<task_name>_<timestamp>.log`。
 
 **控制台摘要示例:**
 ```text

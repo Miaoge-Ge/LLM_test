@@ -1,7 +1,7 @@
 # LLM Evaluation Framework
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/)
 
 A lightweight, configuration-driven, and extensible framework for evaluating Large Language Models (LLMs). Designed for efficiency and ease of use, it supports multi-provider concurrent evaluation, rate limiting, and detailed performance metrics.
 
@@ -17,7 +17,7 @@ A lightweight, configuration-driven, and extensible framework for evaluating Lar
   - **Accuracy (Pass@1)**
   - **Throughput (Tokens/sec)**
   - **Latency (Avg duration per task)**
-  - **Detailed Logs**: Separates clean result metrics (`results.tsv`) from detailed execution logs (`execution.log`).
+  - **Detailed Logs**: Per-task results + final summary in a single log file.
 - **Extensible Architecture**: Easily add new tasks (Code Generation, Reasoning, etc.) by inheriting from base classes.
 - **Configuration Hierarchy**: Flexible `registry.yaml` (static resources) + `settings.yaml` (runtime overrides) architecture.
 
@@ -97,10 +97,7 @@ python run_eval.py
 
 ### Output
 
-Results are saved in `model_test/<model_name>/<task_name>_<timestamp>/`:
-
-- **`results.tsv`**: Tab-separated metrics for each task (Task ID, Status, Duration, Tokens).
-- **`execution.log`**: Full execution log including errors, warnings, and summary.
+Results are saved in `model_test/<model_name>/<task_name>_<timestamp>.log`.
 
 **Console Summary Example:**
 ```text

@@ -112,7 +112,7 @@ class CodeGenerationTask(BaseTask):
 
     @property
     def log_columns(self) -> List[str]:
-        return ["task_id", "status", "duration", "tokens"]
+        return ["task_id", "status", "duration", "total_tokens"]
 
     def _execute_and_log(self, task_id: str, code: str, start_time: float, usage: Dict[str, int]) -> Dict[str, Any]:
         status, _ = self.code_executor.execute(code)
@@ -122,14 +122,16 @@ class CodeGenerationTask(BaseTask):
             "status": status,
             "duration": format_time(duration),
             "duration_raw": duration,
-            "tokens": usage.get("total_tokens", 0)
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0)
         }
 
 class ReasoningTask(BaseTask):
     """Base class for reasoning tasks (e.g., GSM8K)."""
     @property
     def log_columns(self) -> List[str]:
-        return ["id", "status", "ground_truth", "model_prediction", "duration", "tokens"]
+        return ["id", "status", "ground_truth", "model_prediction", "duration", "total_tokens"]
 
 class Runner:
     def __init__(self, config: EvalConfig):
@@ -151,7 +153,11 @@ class Runner:
         passed_count = 0
         failed_count = 0
         api_failed_count = 0
+        empty_response_count = 0
+        internal_error_count = 0
         total_duration = 0
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
         total_tokens = 0
         
         with Logger(self.config.model_name, task_name) as logger:
@@ -190,16 +196,28 @@ class Runner:
                                 print(f"\n[FATAL] Stopping execution due to API Error: {error_msg}")
                                 break
 
+                            elif status == "EMPTY_RESPONSE":
+                                empty_response_count += 1
+                                item_id = result.get("task_id", result.get("id"))
+                                logger.log_message(f"Empty response for item {item_id}: {result.get('error_msg')}", level="WARN")
+
                             elif status == "PASSED":
                                 passed_count += 1
                             elif status == "API_FAILED":
                                 api_failed_count += 1
-                                logger.log_message(f"API Failed for item {result.get('id')}: {result.get('error_msg')}", level="WARN")
+                                item_id = result.get("task_id", result.get("id"))
+                                logger.log_message(f"API Failed for item {item_id}: {result.get('error_msg')}", level="WARN")
+                            elif status == "INTERNAL_ERROR":
+                                internal_error_count += 1
+                                item_id = result.get("task_id", result.get("id"))
+                                logger.log_message(f"Internal error for item {item_id}: {result.get('error_msg')}", level="ERROR")
                             else:
                                 failed_count += 1
                             
                             total_duration += result.get("duration_raw", 0)
-                            total_tokens += result.get("tokens", 0)
+                            total_prompt_tokens += result.get("prompt_tokens", 0)
+                            total_completion_tokens += result.get("completion_tokens", 0)
+                            total_tokens += result.get("total_tokens", result.get("tokens", 0))
                             
                         except Exception as e:
                             logger.log_message(f"Runner Loop Exception: {e}", level="ERROR")
@@ -212,8 +230,8 @@ class Runner:
             if self.api_failure_occurred:
                 logger.log_summary("\n[!] Evaluation Aborted due to Critical API Failure.")
             
-            self._print_summary(logger, passed_count, failed_count, api_failed_count, len(problems), 
-                              total_duration, total_tokens, wall_time)
+            self._print_summary(logger, task_name, passed_count, failed_count, api_failed_count, empty_response_count, internal_error_count, len(problems),
+                              total_duration, total_prompt_tokens, total_completion_tokens, total_tokens, wall_time)
 
     def _safe_process_item(self, task: BaseTask, item: Any, logger: Logger) -> Optional[Dict[str, Any]]:
         if self.stop_event.is_set():
@@ -223,38 +241,61 @@ class Runner:
             return task.process_item(item, self.llm_client)
         except Exception as e:
             logger.log_message(f"Exception processing item: {e}", level="ERROR")
+            item_task_id = None
+            if isinstance(item, dict):
+                item_task_id = item.get("task_id")
+                if item_task_id is None:
+                    item_task_id = item.get("id")
+                if item_task_id is None:
+                    item_task_id = item.get("_index")
             return {
-                "id": "unknown",
+                "task_id": item_task_id if item_task_id is not None else "unknown",
+                "id": item_task_id if item_task_id is not None else "unknown",
                 "status": "INTERNAL_ERROR",
                 "error_msg": str(e),
                 "duration_raw": 0,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
 
-    def _print_summary(self, logger, passed, failed, api_errors, total, total_duration, total_tokens, wall_time):
+    def _print_summary(self, logger, task_name, passed, failed, api_errors, empty_responses, internal_errors, total, total_duration, total_prompt_tokens, total_completion_tokens, total_tokens, wall_time):
         avg_duration = total_duration / total if total > 0 else 0
-        avg_tokens = total_tokens / total if total > 0 else 0
-        
-        processed_total = passed + failed + api_errors
-        accuracy = passed / processed_total if processed_total > 0 else 0.0
+
+        processed_total = passed + failed + api_errors + empty_responses + internal_errors
+        valid_tasks = passed + failed
+        accuracy = passed / valid_tasks if valid_tasks > 0 else 0.0
         tokens_per_sec = total_tokens / wall_time if wall_time > 0 else 0.0
-        
+
+        concurrency_efficiency = total_duration / wall_time if wall_time > 0 else 0.0
+
         summary = (
-            f"\n{'=' * 50}\n"
-            f"Evaluation Summary\n"
-            f"{'-' * 20}\n"
-            f"Tasks Total: {total}\n"
-            f"Tasks Processed: {processed_total}\n"
-            f"Passed: {passed}\n"
-            f"Failed: {failed}\n"
-            f"API Errors: {api_errors}\n"
-            f"Accuracy: {accuracy:.2%}\n"
-            f"\nPerformance Metrics\n"
-            f"{'-' * 20}\n"
-            f"Wall Clock Time: {format_time(wall_time)}\n"
-            f"Throughput: {tokens_per_sec:.1f} tokens/sec\n"
-            f"Total Tokens: {total_tokens}\n"
-            f"\nResults saved to: {logger.session_dir}\n"
-            f"{'=' * 50}\n"
+            f"\n{'=' * 60}\n"
+            f"FINAL SUMMARY\n"
+            f"{'=' * 60}\n"
+            f"Test Suite: {task_name}\n"
+            f"Model: {self.config.model_name}\n"
+            f"{'-' * 60}\n"
+            f"Results\n"
+            f"  Total Tasks: {total}\n"
+            f"  Processed: {processed_total}\n"
+            f"  Passed: {passed}\n"
+            f"  Failed: {failed}\n"
+            f"  API Errors: {api_errors}\n"
+            f"  Empty Responses: {empty_responses}\n"
+            f"  Internal Errors: {internal_errors}\n"
+            f"  Accuracy: {accuracy:.2%} (excludes api/empty/internal errors)\n"
+            f"{'-' * 60}\n"
+            f"Token Usage\n"
+            f"  Input Tokens: {total_prompt_tokens:,}\n"
+            f"  Output Tokens: {total_completion_tokens:,}\n"
+            f"  Total Tokens: {total_tokens:,}\n"
+            f"{'-' * 60}\n"
+            f"Time Metrics\n"
+            f"  Wall Clock Time: {format_time(wall_time)}\n"
+            f"  Actual Time (sum): {format_time(total_duration)}\n"
+            f"  Concurrency Efficiency: {concurrency_efficiency:.2f}x\n"
+            f"  Throughput: {tokens_per_sec:.1f} tokens/sec\n"
+            f"{'=' * 60}\n"
         )
         logger.log_summary(summary)

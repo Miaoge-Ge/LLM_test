@@ -22,9 +22,23 @@ class ConfigManager:
         
         with open(path, "r", encoding="utf-8") as f:
             try:
-                return yaml.safe_load(f) or {}
+                data = yaml.safe_load(f) or {}
+                return self._resolve_env_placeholders(data)
             except yaml.YAMLError as e:
                 raise ValueError(f"Error parsing {path}: {e}")
+
+    def _resolve_env_placeholders(self, obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: self._resolve_env_placeholders(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [self._resolve_env_placeholders(v) for v in obj]
+        if isinstance(obj, str):
+            s = obj.strip()
+            if s.startswith("${") and s.endswith("}") and len(s) > 3:
+                env_key = s[2:-1].strip()
+                return os.environ.get(env_key, obj)
+            return obj
+        return obj
 
     def _load_config(self):
         self._settings = self._load_yaml(self.SETTINGS_FILE)
@@ -61,6 +75,14 @@ class ConfigManager:
         # 2. Merge: Provider -> Model (Registry) -> Settings (Override)
         final_config = provider_config.copy()
         final_config.update(model_config)
+
+        api_key = final_config.get("api_key")
+        if not api_key or (isinstance(api_key, str) and api_key.strip().startswith("${") and api_key.strip().endswith("}")):
+            provider = model_config.get("provider", provider_key)
+            raise ValueError(
+                f"Missing api_key for provider '{provider}'. "
+                f"Set it in {self.REGISTRY_FILE} or via environment variable."
+            )
         
         # Override with specific runtime settings if present in settings.yaml
         for override_key in ["temperature", "rpm_limit", "tpm_limit"]:
@@ -73,7 +95,7 @@ class ConfigManager:
         datasets = self._registry.get("datasets", {})
         path = datasets.get(task_name)
         if not path:
-             return ""
+            return ""
         return path
 
     def get_global_setting(self, key: str, default: Any = None) -> Any:

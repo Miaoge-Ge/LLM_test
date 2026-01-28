@@ -1,7 +1,6 @@
 # Ignore config file containing secrets
 settings.yaml
 registry.yaml
-config.yaml
 
 # Ignore evaluation logs and results
 model_test/
@@ -24,3 +23,5 @@ __pycache__/
 # System files
 .DS_Store
 Thumbs.db
+
+test/

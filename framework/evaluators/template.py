@@ -32,7 +32,7 @@ class TemplateTask(BaseTask):
         Define the columns for the result log file.
         Must include 'status', 'duration', 'tokens'.
         """
-        return ["id", "status", "question", "answer", "duration", "tokens"]
+        return ["id", "status", "question", "answer", "duration", "total_tokens"]
 
     # 4. Implement item processing logic
     def process_item(self, item: Any, llm_client: LLMClient) -> Dict[str, Any]:
@@ -51,17 +51,32 @@ class TemplateTask(BaseTask):
         
         # Call LLM
         start_time = time.time()
-        completion, usage = llm_client.generate(messages)
+        completion, usage, error_msg = llm_client.generate(messages)
         duration = time.time() - start_time
         
         # Check result
-        if not completion:
+        if error_msg:
             return {
                 "id": task_id,
                 "status": "API_FAILED",
+                "error_msg": error_msg,
                 "duration": format_time(duration),
                 "duration_raw": duration,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
+            }
+
+        if not completion:
+            return {
+                "id": task_id,
+                "status": "EMPTY_RESPONSE",
+                "error_msg": "Empty completion",
+                "duration": format_time(duration),
+                "duration_raw": duration,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
 
         # Validate answer (Implement your own logic here)
@@ -75,5 +90,7 @@ class TemplateTask(BaseTask):
             "answer": completion,
             "duration": format_time(duration),
             "duration_raw": duration,
-            "tokens": usage.get("total_tokens", 0)
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0)
         }

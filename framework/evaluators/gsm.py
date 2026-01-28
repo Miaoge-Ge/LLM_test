@@ -35,19 +35,23 @@ class GSM8KTask(ReasoningTask):
                 "model_prediction": "Error",
                 "duration": format_time(duration),
                 "duration_raw": duration,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
 
         if not completion:
             return {
                 "id": index,
-                "status": "CRITICAL_API_FAILURE", # Changed from API_FAILED to CRITICAL_API_FAILURE
+                "status": "EMPTY_RESPONSE",
                 "error_msg": "Empty completion (Possible Content Filter or Overload)",
                 "ground_truth": ground_truth_val,
                 "model_prediction": "None",
                 "duration": format_time(duration),
                 "duration_raw": duration,
-                "tokens": 0
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0
             }
 
         model_val = self._extract_answer(completion)
@@ -60,7 +64,9 @@ class GSM8KTask(ReasoningTask):
             "model_prediction": model_val,
             "duration": format_time(duration),
             "duration_raw": duration,
-            "tokens": usage.get("total_tokens", 0)
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0)
         }
 
     def _extract_answer(self, text: str) -> str:
